@@ -1,0 +1,59 @@
+---
+title: "Model Selection (Task 2)"
+author: "Lucas Boyd"
+date: "1/21/2022"
+output: html_document
+---
+
+```{r setup, include= TRUE, message = FALSE, warning = FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+# attach packages
+library(tidyverse)
+library(here)
+library(janitor)
+library(equatiomatic)
+library(AICcmodavg)
+library(kableExtra)
+```
+### Reading in and preparing the data
+```{r}
+# reading in the data
+seawater <- read_csv(here("data", "calcofi_seawater_samples.csv"))
+
+# creating and storing simple linear regression models
+f1 <- o2sat ~ t_deg_c + salinity + po4u_m # storing formulas with model inputs
+model1 <- lm(f1, data = seawater) # r^2 = 0.954
+
+f2 <- o2sat ~ t_deg_c + salinity + po4u_m + depth_m # storing formulas with model inputs
+model2 <- lm(f2, data = seawater) # r^2 = 0.957
+```
+
+### Comparing model fit with AIC
+```{r}
+# using AICc to compare models
+AICc(model1) # 619.03
+AICc(model2) # 616.60
+
+# creating a table to compare AIC results and call inline
+aictable <- aictab(list(model1, model2))
+# delta AICc = 2.42, this is enough to say model 2 is significantly better than model 1
+
+```
+#### Results of AIC analysis
+
+-  **Model 1** had an AIC value of `r aictable$AICc[2]`
+-  **Model 2** had an AIC value of `r aictable$AICc[1]`
+-  The difference in AIC values is `r aictable$Delta_AICc[2]`, indicating that **model 2 has a significantly better model fit**. 
+
+
+
+```{r}
+
+```
+
+
+
+
+
+
+

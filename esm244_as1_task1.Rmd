@@ -1,0 +1,96 @@
+---
+title: "Yellow-legged Frog Abundance (Task 1)"
+author: "Lucas Boyd"
+date: "1/20/2022"
+output: html_document
+---
+
+### Overview
+The following report wrangles and visualizes amphibian abundance data recorded by the Sierra Lakes Inventory Project. First, the code wrangles data to show total counts of yellow-legged frogs across three life cycle stages for each year that data was collected. Then, the code wrangles and visualizes counts of yellow-legged frogs by the lake in the lakes that they were most abundant. 
+
+
+### Set up and reading in the data
+```{r setup, include=TRUE, warning = FALSE, message = FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+# attach packages
+library(tidyverse)
+library(broom)
+library(janitor)
+library(here)
+library(readxl)
+library(lubridate)
+library(patchwork)
+```
+
+```{r}
+# reading in the amphibians data
+amphib <- read_xlsx(here("data", "sierra_amphibians.xlsx")) %>% 
+  mutate(year = year(survey_date)) # pulling out a new column for year with lubridate
+``` 
+### Wrangling and visualizing frog counts by year
+```{r}
+# filtering only for yellow-legged frogs at adult, sub-adult and tadpole life stages
+frogs <- amphib %>% 
+  filter(amphibian_species == "RAMU") %>% 
+  filter(amphibian_life_stage %in% c("Adult", "SubAdult", "Tadpole"))
+
+frogs_count <- frogs %>% # getting counts of frogs by year and life stage
+  count(year, amphibian_life_stage)
+```
+
+```{r}
+# visualizing the data with ggplot
+g1 <- ggplot(data = frogs_count, aes(x = as.factor(year), y = n, fill = amphibian_life_stage)) +
+  geom_col(width = 0.7) + # adding geometry
+  scale_fill_manual(values = c("goldenrod4", "goldenrod2", "lightgoldenrod2" )) + # customizing colors
+  theme_minimal(12) + # adding theme
+  labs(x = "Survey Collection Year", y = "Survey Counts") + # changing labels
+  theme(legend.title = element_blank(), legend.position = c(0.2,0.85), axis.text.x = element_text(vjust = 7)) # adjusting text and aesthetics
+
+```
+### Wrangling and visualizing total frog counts by lake
+```{r}
+# filtering for only adult and sub-adult yellow-legged frogs and finding total counts for each lake
+frogs_lakes <- frogs %>% 
+  filter(amphibian_life_stage %in% c("SubAdult", "Adult")) %>% 
+  count(lake_id) %>% 
+  mutate(lake_id = as_factor(lake_id)) %>% # changing lake_id to a factor
+    slice_max(order_by = n, n = 5) %>% # reataining only top 5 most prolific lakes, ordering data
+  mutate(lake = "Lake") %>% # changing the text of the lake id column to a label
+  unite("lake_id", lake, lake_id, sep = " ")
+  
+```
+
+```{r}
+# visualizing the data with ggplot
+g2 <- ggplot(data = frogs_lakes, aes(x = fct_reorder(lake_id, n), y = n, fill = lake_id)) +
+         geom_col(width = 0.75) + # adding a geometry
+  labs(x = element_blank(), y = "Total Survey Count") + # changing labels
+  scale_fill_manual(values = c("darkolivegreen3", "darkolivegreen3", "darkolivegreen", "darkolivegreen3", "darkolivegreen4")) + # customizing colors
+    theme_minimal(12) + # adding theme
+  theme(legend.position = "none") + # removing legend
+  coord_flip() + # flipping axes
+  theme(axis.text.x = element_text(vjust = 7), axis.text.y = element_text(margin = margin(t = 0, r = -10, b = 0, l = 0))) # adjusting text
+
+```
+### Finalized plots
+```{r}
+# placing the plots next to eachother
+( g1 | g2 )
+```
+
+**Fig. 1** shows the survey collection counts of yellow-legged frogs (Rana Mucosa).
+The **Left** panel displays total counts of yellow-legged frogs by each year that data was collected. Observations for adult, sub-adult and tadpole are included in the figure. The **Right** panel shows total counts of yellow-legged frogs observed across all years of collection, organized by the lake in which they were observed. The top 5 lakes where the most frogs were observed are retained for the figure. 
+
+### Data citation
+
+Knapp, R.A., C. Pavelka, E.E. Hegeman, and T.C. Smith. 2020. The Sierra Lakes Inventory Project: Non-Native fish and community composition of lakes and ponds in the Sierra Nevada, California ver 2. Environmental Data Initiative. https://doi.org/10.6073/pasta/d835832d7fd00d9e4466e44eea87fab3
+
+
+
+
+
+
+
+
+
