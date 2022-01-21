@@ -2,24 +2,45 @@
 title: "Model Selection (Task 2)"
 author: "Lucas Boyd"
 date: "1/21/2022"
-output: html_document
+output:
+   html_document:
+     code_folding: show
 ---
+
+# Overview {.tabset .tabset-fade}
+
+The following report explores the relationship between oxygen saturation levels in seawater off California's coast and several chemical and physical variables in data taken from the CalCOFI hydropgraphic database. First, multiple linear regression is used to develop two different models for predicting oxygen saturation levels. Then, both AIC and 10-fold cross validation are applied to analyze and assess model fit
+
+## Initial Steps
+
+### A. Setup
 
 ```{r setup, include= TRUE, message = FALSE, warning = FALSE}
 knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
 # attach packages
 library(tidyverse)
 library(here)
-library(janitor)
 library(equatiomatic)
 library(AICcmodavg)
 library(kableExtra)
 ```
-### Reading in and preparing the data
+
+### B. Reading in the data
+
 ```{r}
 # reading in the data
 seawater <- read_csv(here("data", "calcofi_seawater_samples.csv"))
+```
 
+**Data Citation:** CalCOFI data are available for use without restriction. Data downloaded from <https://calcofi.org/ccdata.html>. Accessed 1/18/2022.
+
+### C. Preparing the data for model fit analysis
+
+-   **Model 1** predicts oxygen saturation as a function of water temperature, salinity, and phosphate concentration
+
+-   **Model 2** predicts oxygen saturation as a function of water temp, salinity, phosphate concentration, and depth.
+
+```{r}
 # creating and storing simple linear regression models
 f1 <- o2sat ~ t_deg_c + salinity + po4u_m # storing formulas with model inputs
 model1 <- lm(f1, data = seawater) # r^2 = 0.954
@@ -28,7 +49,13 @@ f2 <- o2sat ~ t_deg_c + salinity + po4u_m + depth_m # storing formulas with mode
 model2 <- lm(f2, data = seawater) # r^2 = 0.957
 ```
 
-### Comparing model fit with AIC
+## Model Selection: AIC
+
+### A. Running AIC to assess model fit
+
+-   A lower AIC value indicates greater model fit
+-   To determine that a model is signifcantly better than another, it must have an AIC that is at least 2 lower than another.
+
 ```{r}
 # using AICc to compare models
 AICc(model1) # 619.03
@@ -39,21 +66,134 @@ aictable <- aictab(list(model1, model2))
 # delta AICc = 2.42, this is enough to say model 2 is significantly better than model 1
 
 ```
-#### Results of AIC analysis
 
--  **Model 1** had an AIC value of `r aictable$AICc[2]`
--  **Model 2** had an AIC value of `r aictable$AICc[1]`
--  The difference in AIC values is `r aictable$Delta_AICc[2]`, indicating that **model 2 has a significantly better model fit**. 
+### B. Results of AIC analysis
 
+-   **Model 1** had an AIC value of `r round(aictable$AICc[2], 2)`
+-   **Model 2** had an AIC value of `r round(aictable$AICc[1], 2)`
+-   The difference in AIC values is `r round(aictable$Delta_AICc[2], 2)`, indicating that **model 2 has a significantly better model fit**.
 
+## 10-fold Cross Validation
+
+### A. Creating subsets of data to both train and test our model
+
+```{r}
+folds <- 10 # storing the number of folds that we'll use for our analysis
+fold_vect <- rep(1:folds, length.out = nrow(seawater)) # repeating the folds until it reaches the end of the data frame
+
+set.seed(42) # setting a seed for reproducibility 
+
+seawater_fold <- seawater %>% 
+  mutate(group = sample(fold_vect, size = n(), replace = FALSE)) # sorting out data into 10 randomly selected groups
+
+# first fold
+test_df <- seawater_fold %>% # creating a subset of data to test the model on
+  filter(group == 1)
+
+train_df <- seawater_fold %>% # creating a subset of data that will train our model
+  filter(group != 1)
+
+# creating models to train 
+training_model1<- lm(f1, data = train_df) # storing a regression model of formula 1, trained on the training df
+training_model2 <- lm(f2, data = train_df) # storing a regression model of formula 2, trained on the training df
+```
+
+### 
+
+### B. Creating root mean square error (RMSE) function to compare model fit
+
+```{r}
+# storing a function to calculate RMSE
+calc_rmse <- function(x, y) {
+  rmse_result <- (x-y)^2 %>% mean() %>% sqrt() 
+  return(rmse_result)}
+```
+
+### C. Testing cross validation
+
+```{r}
+# using the models to predict test data
+predict_test <- test_df %>% 
+  mutate(model1 = predict(training_model1, test_df), # use predict() to apply a model to a set of subset of data (test_df)
+         model2 = predict(training_model2, test_df)) # creating a new column that records the predictions based on each of these models
+
+rmse_predict_test <- predict_test %>% 
+  summarize(rmse_model1 = calc_rmse(model1, o2sat), # summary table running each of the predicted values through the RMSE function that we created
+            rmse_model2 = calc_rmse(model2, o2sat))
+
+# cross validation is working, now time to calculate over all folds
+```
+
+### D. Calculating RMSE over all 10 folds
 
 ```{r}
 
+# K-fold cross validation
+
+rmse_df <- data.frame()
+
+# setting up the for loop to calculate over all the folds
+for(i in 1:folds) { 
+  kfold_test_df <- seawater_fold %>% 
+    filter(group == i)
+  kfold_train_df <- seawater_fold %>% 
+    filter(group != i)
+
+# running linear regression over each fold
+kfold_model1 <- lm(f1, data = kfold_train_df)
+kfold_model2 <- lm(f2, data = kfold_train_df)
+
+# creating new columns of predictions from each of the folds
+kfold_pred_df <- kfold_test_df %>% 
+  mutate(model1 = predict(kfold_model1, kfold_test_df), 
+         model2 = predict(kfold_model2, .))
+
+# create a dataframe of the RMSE results
+kfold_rmse <- kfold_pred_df %>% 
+  summarize(rmse_model1 = calc_rmse(model1, o2sat),
+            rmse_model2 = calc_rmse(model2, o2sat))
+
+# adding new rows to the data frame each time the loop runs
+rmse_df <- bind_rows(rmse_df, kfold_rmse)
+}
+
+# summarize results to find the average RMSE 
+rmse_table <- rmse_df %>% 
+  summarize(mean_rmse_model1 = mean(rmse_model1),
+            mean_rmse_model2 = mean(rmse_model2))
 ```
 
+### E. Results of 10-fold cross validation
 
+-   Mean RMSE values taken across all folds of 10-fold cross validation.
 
+-   Lower mean RMSE value indicates greater model fit.
 
+```{r}
+kable(rmse_table, col.names = c("Mean RMSE - Model 1", "Mean RMSE - Model 2"), digits = 2) %>% 
+  kable_minimal(full_width = FALSE)
+```
 
+**Table 1** shows the mean RMSE values for each model, based on the results of 10-fold cross validation. **Model 2** has a lower mean RMSE value, indicating that it has better model fit.
 
+## Results
 
+### Final Model
+
+Based on the results of AIC analysis and K-fold cross validation, it was determined that the following model (referred to as **Model 2** in previous analyses) is the best fit for determining oxygen saturation levels of seawater.
+
+```{r}
+final_model <- lm(f2, data = seawater)
+
+final_model_eq <- extract_eq(final_model, wrap = TRUE, use_coefs = TRUE)
+```
+
+`r final_model_eq`
+
+**Variables:** Model predicts oxygen saturation as a function of water temperature (C), salinity, phosphate concentration and depth.
+
+-   **o2sat** = oxygen saturation
+
+-   **t_deg_c** = water temperature (degrees C)
+
+-   **po4u_m** = phosphate concentration
